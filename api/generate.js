@@ -14,7 +14,22 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    const systemInstruction = `You are a world-class commercial photographer and design AI...`; // Full instruction
+    const systemInstruction = `You are a world-class commercial photographer and design AI. Your primary directive is to follow the user's creative brief with extreme precision, especially regarding aspect ratio, subject focus, and style.
+
+**Core Rules:**
+1.  **Aspect Ratio is LAW:** The final image's aspect ratio MUST strictly match the one specified in the prompt (e.g., 'square (1:1)', 'widescreen landscape (16:9)'). This is non-negotiable.
+2.  **Subject Focus is CRITICAL:** Adhere strictly to the focus direction ('kemasan' for packaging, 'produk' for raw product, 'keduanya' for both).
+    * 'kemasan': The packaging is the hero. The raw product should NOT be visible.
+    * 'produk': The raw product is the hero. The packaging should NOT be visible.
+    * 'keduanya': Both packaging and raw product must be present and artistically integrated.
+3.  **Literal Interpretation:** Interpret the user's prompt as literally as possible. If they ask for 'dramatic lighting on a marble surface', deliver exactly that. Avoid overly artistic interpretations that deviate from the core request.
+4.  **No Text (Unless Specified):** Do NOT add any text, logos, or watermarks to the image unless explicitly requested in the prompt (e.g., a poster headline). For product photos, the image should be clean.
+5.  **Hyper-realism:** Generate images with photorealistic quality, paying close attention to textures, shadows, and reflections. The output should look like a high-budget professional photograph or a high-quality CGI render.
+6.  **Contextual Backgrounds:** Create backgrounds that complement the product and brief. If the brief is 'minimalist', the background should be simple and clean. If 'luxurious', it should be elegant.
+7.  **Indonesian Context:** Understand that prompts may have an Indonesian context. Interpret brand names, product types, and styles accordingly.
+
+**Output Format:**
+* You MUST respond with only the generated image in the requested format. Do not add any conversational text, descriptions, or apologies. Your entire response is the image itself.`;
     
     const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash-latest",
@@ -23,7 +38,9 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
 
     const result = await model.generateContent([finalPrompt, ...imageParts]);
     const response = await result.response;
-    const base64ImageData = response.candidates[0].content.parts.find(p => p.inlineData)?.inlineData.data;
+    // Safely access candidate and parts
+    const candidate = response.candidates?.[0];
+    const base64ImageData = candidate?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
 
     if (base64ImageData) {
         return `data:image/png;base64,${base64ImageData}`;
@@ -61,15 +78,20 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    console.log("API function invoked. Method:", req.method);
+
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
     
     if (!geminiApiKey) {
-        return res.status(500).json({ error: "Server is not configured with a GEMINI_API_KEY." });
+        console.error("FATAL: GEMINI_API_KEY is not set on Vercel.");
+        return res.status(500).json({ error: "Server configuration error: API Key is missing. Please check Vercel environment variables." });
     }
 
     try {
         const { type, payload } = req.body;
+        console.log(`Handling request type: ${type}`);
 
         if (type === 'image') {
             const { mode, prompt, posterHeadline, mockupType, brandName, brandDescription, aspectRatio, aiFocus, engine, openaiApiKey, imageBlobs } = payload;
@@ -104,6 +126,7 @@ module.exports = async (req, res) => {
             } else {
                 imageUrl = await generateWithGemini(finalPrompt, imageParts);
             }
+            console.log("Image generation successful.");
             res.status(200).json({ imageUrl });
 
         } else if (type === 'final-render') {
@@ -116,6 +139,7 @@ module.exports = async (req, res) => {
             const response = await result.response;
             const finalRenderBase64 = response.candidates[0].content.parts.find(p => p.inlineData)?.inlineData.data;
             if (finalRenderBase64) {
+                console.log("Final render successful.");
                 res.status(200).json({ imageUrl: `data:image/png;base64,${finalRenderBase64}` });
             } else {
                 throw new Error("AI did not return a final render image.");
@@ -127,7 +151,15 @@ module.exports = async (req, res) => {
             const result = await model.generateContent(modelPayload);
             const response = await result.response;
             const ideasText = response.text();
-            res.status(200).json(JSON.parse(ideasText));
+            console.log("AI response for ideas (raw text):", ideasText);
+            try {
+                const parsedJson = JSON.parse(ideasText);
+                console.log("Successfully parsed ideas JSON from AI.");
+                res.status(200).json(parsedJson);
+            } catch (parseError) {
+                console.error("Failed to parse JSON from AI response:", parseError);
+                throw new Error(`AI returned invalid JSON. Raw response: ${ideasText}`);
+            }
 
         } else if (type === 'analyze') {
             const { imageParts, analysisType } = payload;
@@ -148,14 +180,15 @@ module.exports = async (req, res) => {
             });
             const response = await result.response;
             const jsonText = response.text();
+             console.log(`Analysis '${analysisType}' successful.`);
             res.status(200).json(JSON.parse(jsonText));
 
         } else {
             res.status(400).json({ error: 'Invalid request type' });
         }
     } catch (error) {
-        console.error('Error in API function:', error);
-        res.status(500).json({ error: error.message || 'An internal server error occurred.' });
+        console.error('Error in API function main handler:', error);
+        res.status(500).json({ error: error.message || 'An unknown internal server error occurred.' });
     }
 };
 
