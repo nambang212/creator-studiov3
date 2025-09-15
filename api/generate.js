@@ -14,10 +14,8 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    // DEFINITIVE FIX: Switched to the dedicated image generation model and explicitly requested an IMAGE modality.
     const systemInstruction = `You are an AI assistant specialized in creating photorealistic images. Your primary and only task is to generate a single image file based on the user's creative brief and reference images. Do not respond with text, code, or any other content besides the final image.`;
     
-    // Using the model specifically tuned for image generation tasks.
     const model = genAI.getGenerativeModel({ 
         model: "gemini-2.5-flash-image-preview",
         systemInstruction,
@@ -29,13 +27,20 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
     }
     content_parts.push({text: finalPrompt});
 
-    // Explicitly request an IMAGE as the output to prevent text responses.
-    const result = await model.generateContent({
-        contents: [{ parts: content_parts }],
-        generationConfig: {
-            responseModalities: ['IMAGE']
-        },
-    });
+    let result;
+    try {
+        // ADDED a specific try...catch block here to prevent a full server crash.
+        result = await model.generateContent({
+            contents: [{ parts: content_parts }],
+            generationConfig: {
+                responseModalities: ['IMAGE']
+            },
+        });
+    } catch (e) {
+        console.error("CRITICAL CRASH inside generateContent call:", e);
+        // This converts a server-crashing error into a manageable one.
+        throw new Error(`Google AI SDK Error: ${e.message}`);
+    }
 
     const response = await result.response;
     
