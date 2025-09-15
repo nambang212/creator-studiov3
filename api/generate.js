@@ -14,22 +14,12 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    const systemInstruction = `You are a world-class commercial photographer and design AI. Your primary directive is to follow the user's creative brief with extreme precision, especially regarding aspect ratio, subject focus, and style.
-
-**Core Rules:**
-1.  **Aspect Ratio is LAW:** The final image's aspect ratio MUST strictly match the one specified in the prompt (e.g., 'square (1:1)', 'widescreen landscape (16:9)'). This is non-negotiable.
-2.  **Subject Focus is CRITICAL:** Adhere strictly to the focus direction ('kemasan' for packaging, 'produk' for raw product, 'keduanya' for both).
-    * 'kemasan': The packaging is the hero. The raw product should NOT be visible.
-    * 'produk': The raw product is the hero. The packaging should NOT be visible.
-    * 'keduanya': Both packaging and raw product must be present and artistically integrated.
-3.  **Literal Interpretation:** Interpret the user's prompt as literally as possible. If they ask for 'dramatic lighting on a marble surface', deliver exactly that. Avoid overly artistic interpretations that deviate from the core request.
-4.  **No Text (Unless Specified):** Do NOT add any text, logos, or watermarks to the image unless explicitly requested in the prompt (e.g., a poster headline). For product photos, the image should be clean.
-5.  **Hyper-realism:** Generate images with photorealistic quality, paying close attention to textures, shadows, and reflections. The output should look like a high-budget professional photograph or a high-quality CGI render.
-6.  **Contextual Backgrounds:** Create backgrounds that complement the product and brief. If the brief is 'minimalist', the background should be simple and clean. If 'luxurious', it should be elegant.
-7.  **Indonesian Context:** Understand that prompts may have an Indonesian context. Interpret brand names, product types, and styles accordingly.
-
-**Output Format:**
-* You MUST respond with only the generated image in the requested format. Do not add any conversational text, descriptions, or apologies. Your entire response is the image itself.`;
+    // UPDATED: Simplified system instruction to be more direct.
+    const systemInstruction = `You are an AI image generator. Your primary task is to create a single, photorealistic image based on the user's prompt.
+- Adhere strictly to the requested aspect ratio.
+- Follow the creative brief and subject focus instructions precisely.
+- Do NOT add any text, logos, or watermarks unless explicitly requested as a poster headline.
+- Your ONLY output must be the image file. Do not respond with any text, descriptions, or confirmations.`;
     
     const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash-latest",
@@ -38,18 +28,37 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
 
     const result = await model.generateContent([finalPrompt, ...imageParts]);
     const response = await result.response;
-    // Safely access candidate and parts
+    
+    // DEBUGGING: Log safety feedback from the API
+    if (response.promptFeedback) {
+        console.log("Safety Feedback from Gemini:", JSON.stringify(response.promptFeedback, null, 2));
+    }
+
     const candidate = response.candidates?.[0];
     const base64ImageData = candidate?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+    
+    // DEBUGGING: Log finish reason
+    if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+        console.error("Generation stopped for a reason other than STOP:", candidate.finishReason);
+    }
 
     if (base64ImageData) {
         return `data:image/png;base64,${base64ImageData}`;
     } else {
         const textResponse = response.text();
-        const finalError = textResponse ? `AI failed to create image: "${textResponse}"` : "AI did not return an image. This might be due to safety filters or an incompatible prompt.";
+        
+        let finalError = "AI did not return an image.";
+        if (textResponse) {
+            finalError = `AI failed to create image, responding with text instead: "${textResponse}"`;
+        }
+        if (candidate?.finishReason === "SAFETY") {
+             finalError += " This was likely due to the prompt or image triggering a safety filter.";
+        }
+        
         throw new Error(finalError);
     }
 };
+
 
 const generateWithDalle = async (finalPrompt, aspectRatio, openaiApiKey) => {
     const sizeMapping = { '1:1': '1024x1024', '9:16': '1024x1792', '16:9': '1792x1024', '4:5': '1024x1024' };
@@ -117,7 +126,10 @@ module.exports = async (req, res) => {
                     default: creativeBrief += " Additional direction: Focus ONLY on the product packaging. Do not show the raw product separately."; break;
                 }
             }
-            const finalPrompt = `**[LAW 1: ASPECT RATIO] The final image MUST BE ${descriptiveAspectRatio}.**\n\n${creativeBrief}`;
+            
+            // UPDATED: Rephrased the final prompt to be more natural.
+            const finalPrompt = `${creativeBrief} The final image must be a high-resolution, photorealistic photograph with a ${descriptiveAspectRatio} aspect ratio.`;
+            
             const imageParts = imageBlobs ? imageBlobs.map(blob => ({ inlineData: { mimeType: blob.mimeType, data: blob.data } })) : [];
             let imageUrl;
             if (engine === 'dalle') {
