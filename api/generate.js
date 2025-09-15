@@ -14,23 +14,29 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    // FINAL REVISION 2: Simplified instructions to be less aggressive and more direct.
+    // DEFINITIVE FIX: Switched to the dedicated image generation model and explicitly requested an IMAGE modality.
     const systemInstruction = `You are an AI assistant specialized in creating photorealistic images. Your primary and only task is to generate a single image file based on the user's creative brief and reference images. Do not respond with text, code, or any other content besides the final image.`;
     
+    // Using the model specifically tuned for image generation tasks.
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash-latest",
+        model: "gemini-2.5-flash-image-preview",
         systemInstruction,
     });
 
-    // REVISED: Structure the content array to clearly separate the text prompt from the image reference.
     const content_parts = [];
     if (imageParts && imageParts.length > 0) {
         content_parts.push({ text: "Use the following uploaded image(s) as the primary visual reference for the subject. The text prompt that follows is the creative brief for the new scene you will create." }, ...imageParts);
     }
     content_parts.push({text: finalPrompt});
 
+    // Explicitly request an IMAGE as the output to prevent text responses.
+    const result = await model.generateContent({
+        contents: [{ parts: content_parts }],
+        generationConfig: {
+            responseModalities: ['IMAGE']
+        },
+    });
 
-    const result = await model.generateContent(content_parts);
     const response = await result.response;
     
     if (response.promptFeedback) {
@@ -85,7 +91,7 @@ const generateWithDalle = async (finalPrompt, aspectRatio, openaiApiKey) => {
 // Main handler for all incoming requests
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST', OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -125,7 +131,6 @@ module.exports = async (req, res) => {
                 }
             }
             
-            // FINAL REVISION 2: Simplified the prompt to a direct, single-line command.
             const finalPrompt = `Generate a single, photorealistic image with a ${descriptiveAspectRatio} aspect ratio, based on this creative brief: "${creativeBrief}". Your only output must be the image file.`;
             
             const imageParts = imageBlobs ? imageBlobs.map(blob => ({ inlineData: { mimeType: blob.mimeType, data: blob.data } })) : [];
@@ -156,6 +161,7 @@ module.exports = async (req, res) => {
             }
             
         } else if (type === 'ideas') {
+            // Using the standard model for text tasks is fine.
             const { modelPayload } = payload;
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
             const result = await model.generateContent(modelPayload);
@@ -172,6 +178,7 @@ module.exports = async (req, res) => {
             }
 
         } else if (type === 'analyze') {
+             // Using the standard model for text/JSON tasks is fine.
             const { imageParts, analysisType } = payload;
             let analysisPrompt, schema;
 
