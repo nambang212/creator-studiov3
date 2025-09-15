@@ -14,15 +14,8 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    // FINAL REVISION: Forceful, explicit system instruction to prevent code generation.
-    const systemInstruction = `You are a highly advanced AI image generation service. Your SOLE function is to create and output a single, high-quality, photorealistic image based on a user's creative brief.
-
-**CRITICAL DIRECTIVES - YOU MUST FOLLOW THESE RULES:**
-1.  **YOUR ROLE:** You are an IMAGE GENERATOR. You are NOT a code assistant, a text generator, or a chatbot.
-2.  **PRIMARY OUTPUT:** Your ONLY output is the raw image data. Nothing else.
-3.  **FORBIDDEN ACTIONS:** You MUST NOT, under any circumstances, write, generate, or output any code (Python, JavaScript, etc.), text descriptions, explanations, apologies, or conversational dialogue.
-4.  **INTERPRETATION:** Interpret the user's prompt as a direct command to create a visual asset.
-5.  **EXECUTE:** Fulfill the image request with extreme precision, especially regarding aspect ratio, subject matter, and style.`;
+    // FINAL REVISION 2: Simplified instructions to be less aggressive and more direct.
+    const systemInstruction = `You are an AI assistant specialized in creating photorealistic images. Your primary and only task is to generate a single image file based on the user's creative brief and reference images. Do not respond with text, code, or any other content besides the final image.`;
     
     const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash-latest",
@@ -132,14 +125,8 @@ module.exports = async (req, res) => {
                 }
             }
             
-            // FINAL REVISION: Structured prompt to be a clear command.
-            const finalPrompt = `--- CREATIVE BRIEF ---
-**Creative Task:** Generate a photorealistic image.
-**Brief:** ${creativeBrief}
-**Aspect Ratio (Strict):** ${descriptiveAspectRatio}
---- END BRIEF ---
-
-Execute the image generation now. Your only output should be the image file.`;
+            // FINAL REVISION 2: Simplified the prompt to a direct, single-line command.
+            const finalPrompt = `Generate a single, photorealistic image with a ${descriptiveAspectRatio} aspect ratio, based on this creative brief: "${creativeBrief}". Your only output must be the image file.`;
             
             const imageParts = imageBlobs ? imageBlobs.map(blob => ({ inlineData: { mimeType: blob.mimeType, data: blob.data } })) : [];
             let imageUrl;
