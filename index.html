@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creator Studio AI</title>
+    <!-- Tailwind CSS for rapid UI development -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX transpilation in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Ionicons for UI elements -->
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+    <style>
+        /* Google Fonts for better typography */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0; /* text-slate-200 */
+            background-color: #020617;
+            background-image: radial-gradient(ellipse at top, rgba(30, 27, 75, 0.7), transparent 70%),
+                              radial-gradient(ellipse at bottom, rgba(49, 46, 129, 0.5), transparent 70%);
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(7, 8, 22, 0.37);
+        }
+
+        .mode-btn, .aspect-ratio-btn, .engine-btn { transition: all 0.3s ease; }
+        .aspect-ratio-btn[data-state='active'], .mode-btn[data-state='active'], .engine-btn[data-state='active'] {
+            background-color: #4f46e5;
+            color: white;
+            border-color: #6366f1;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+        }
+        .mode-btn:hover:not([data-state='active']):not(:disabled), .aspect-ratio-btn:hover:not([data-state='active']), .engine-btn:hover:not([data-state='active']) {
+             border-color: #818cf8;
+             background-color: rgba(30, 41, 59, 0.5);
+        }
+        .mode-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: #475569;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .loader-container { display: flex; justify-content: center; align-items: center; flex-direction: column; gap: 1rem; }
+        .futuristic-loader { width: 80px; height: 80px; position: relative; }
+        .futuristic-loader::before, .futuristic-loader::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; }
+        .futuristic-loader::before { border-top-color: #6366f1; animation: spin 1.5s linear infinite; }
+        .futuristic-loader::after { border-bottom-color: #818cf8; animation: spin 3s linear infinite reverse; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite; }
+    
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(10, 10, 20, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal-content {
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            transform: scale(0.95);
+            transition: transform 0.3s ease-in-out;
+        }
+        .modal-overlay.open .modal-content {
+            transform: scale(1);
+        }
+        
+        /* Scroll to Top Button */
+        .scroll-to-top-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 50;
+            opacity: 0;
+            transform: translateY(100px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+        }
+        .scroll-to-top-btn.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Settings Popover */
+        .settings-popover {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            z-index: 60;
+            width: 300px;
+            margin-top: 8px;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+        .settings-popover.open {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useCallback, useEffect, useRef } = React;
+        
+        const fileToBase64 = (file) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = error => reject(error);
+        });
+        
+        const cleanJsonString = (str) => {
+            if (!str) return null;
+            const match = str.match(/```json\s*([\s\S]*?)\s*```/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            return str;
+        };
+
+        const fetchWithExponentialBackoff = async (url, options, onRetry, maxRetries = 5) => {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429) {
+                        throw new Error('Rate limit exceeded');
+                    }
+                    if (response.status >= 500) {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    if (error.message === 'Rate limit exceeded' && onRetry) {
+                        onRetry(delay);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        };
+        
+        const Header = ({ onSettingsClick }) => (
+            <header className="relative text-center py-8 px-4">
+                <div className="absolute top-4 right-4">
+                    <button onClick={onSettingsClick} className="text-slate-400 hover:text-white transition-colors text-3xl p-2 rounded-full hover:bg-slate-700/50">
+                        <ion-icon name="settings-outline"></ion-icon>
+                    </button>
+                </div>
+                <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-100 to-indigo-300" style={{textShadow: "0 0 20px rgba(167, 139, 250, 0.3)"}}>Creator Studio AI</h1>
+                <p className="text-md text-indigo-300 mt-2">by <a href="https://www.sosmeurus.com" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-indigo-200 transition-colors">Sosmeurus</a></p>
+                <p className="text-lg mt-3 max-w-2xl mx-auto text-slate-300">Wujudkan imajinasimu. Buat foto produk profesional dan poster sinematik dalam sekejap.</p>
+            </header>
+        );
+        
+        const SettingsPopover = ({ isOpen, onClose, engine, setEngine, apiKey, setApiKey }) => {
+            const popoverRef = useRef(null);
+            
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+                        onClose();
+                    }
+                };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => document.removeEventListener("mousedown", handleClickOutside);
+            }, [onClose]);
+            
+            if (!isOpen) return null;
+            
+            return(
+                <div ref={popoverRef} className={`settings-popover ${isOpen ? 'open' : ''} glass-panel p-4 rounded-xl`}>
+                    <div className="space-y-4">
+                        <div>
+                             <h3 className="font-semibold mb-2 text-slate-200 text-sm">Pilih Model AI</h3>
+                             <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => setEngine('gemini')} data-state={engine === 'gemini' ? 'active' : ''} className="engine-btn p-2 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium text-xs">Gemini (Cepat)</button>
+                                <button onClick={() => setEngine('dalle')} data-state={engine === 'dalle' ? 'active' : ''} className="engine-btn p-2 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium text-xs">DALL-E 3 (HD)</button>
+                            </div>
+                        </div>
+                        {engine === 'dalle' && (
+                             <div>
+                                 <h3 className="font-semibold mb-2 text-slate-200 text-sm">Kunci API OpenAI</h3>
+                                 <input 
+                                    type="password"
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="sk-..."
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm"
+                                 />
+                                 <p className="text-xs text-slate-500 mt-1">Kunci Anda disimpan di browser & tidak pernah dikirim ke server kami.</p>
+                             </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Footer = () => (
+             <footer className="text-center p-4 mt-8">
+                 <p className="text-xs text-slate-600 mb-2">Versi 4.5 (Build 20250915)</p>
+                 <p className="text-sm text-slate-500">Copyright © {new Date().getFullYear()} <a href="https://www.sosmeurus.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">sosmeurus</a>. All Rights Reserved.</p>
+             </footer>
+        );
+        
+        const FuturisticLoader = ({ queueMessage }) => (
+            <div className="loader-container text-center">
+                <div className="futuristic-loader"></div>
+                <p className="text-slate-300 mt-4">{queueMessage || 'Nge-render imajinasimu...'}</p>
+            </div>
+        );
+
+        const ResultPlaceholder = () => (
+            <div className="text-center text-slate-500 h-full flex flex-col justify-center items-center">
+                <ion-icon name="color-wand-outline" class="text-6xl text-slate-600"></ion-icon>
+                <h2 className="mt-4 text-2xl font-bold text-slate-400">Hasil Kreasimu Muncul Disini</h2>
+                <p className="mt-1 text-slate-500">Atur panel kontrol untuk memulai keajaiban.</p>
+            </div>
+        );
+        
+        const ResultPanel = ({ isLoading, outputImage, error, aspectRatio, queueMessage, onFinalRender, isRenderingFinal, isFinalRenderDone, engine }) => {
+            const handleOpenImage = async () => {
+                if (!outputImage) return;
+                try {
+                    // For DALL-E URLs, we can open them directly. For base64, we create a blob URL.
+                    if (outputImage.startsWith('http')) {
+                         window.open(outputImage, '_blank');
+                         return;
+                    }
+                    const response = await fetch(outputImage);
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    window.open(blobUrl, '_blank');
+                } catch (e) {
+                    console.error("Gagal membuka gambar di tab baru:", e);
+                }
+            };
+            
+            const aspectContainerClasses = {
+                '1:1': 'aspect-square',
+                '4:5': 'aspect-[4/5]',
+                '9:16': 'aspect-[9/16]',
+                '16:9': 'aspect-[16/9]'
+            };
+
+            return (
+                <div className="w-full min-h-[400px] lg:min-h-full flex-grow flex flex-col items-center justify-center glass-panel rounded-2xl p-4 relative transition-all duration-300">
+                    {error && <div className="absolute top-5 left-5 right-5 bg-red-600/90 text-white p-4 rounded-lg shadow-lg text-center z-10">{error}</div>}
+                    {isLoading && <FuturisticLoader queueMessage={queueMessage} />}
+                    {!isLoading && !outputImage && <ResultPlaceholder />}
+                    {!isLoading && outputImage && (
+                        <div className={`relative group w-full flex items-center justify-center ${aspectContainerClasses[aspectRatio] || 'aspect-square'}`}>
+                            <img src={outputImage} alt="Generated result" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl shadow-black/50" />
+                            <div className="absolute inset-0 bg-black/70 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg">
+                                <button onClick={handleOpenImage} className="flex items-center gap-2 bg-slate-100 text-slate-800 font-bold py-2 px-4 rounded-lg hover:bg-white transition-colors">
+                                    <ion-icon name="open-outline"></ion-icon>
+                                    Buka
+                                </button>
+                                <a href={outputImage} download="hasil-creator-studio-ai.png" className="flex items-center gap-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 transition-colors">
+                                    <ion-icon name="download-outline"></ion-icon>
+                                    Download
+                                </a>
+                                {engine === 'gemini' && !isFinalRenderDone && (
+                                <button onClick={onFinalRender} disabled={isRenderingFinal} className="flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-500 transition-colors disabled:bg-slate-500 disabled:cursor-wait">
+                                    {isRenderingFinal ? <span className="spinner"></span> : <ion-icon name="sparkles-outline"></ion-icon>}
+                                    <span>{isRenderingFinal ? 'Merender Ulang...' : 'Ultra HD Final Render'}</span>
+                                </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const AspectRatioButton = ({ ratio, activeRatio, onClick }) => {
+            const aspectClasses = { '1:1': 'aspect-square', '4:5': 'aspect-[4/5]', '9:16': 'aspect-[9/16]', '16:9': 'aspect-[16/9]' };
+            return (
+                <button onClick={() => onClick(ratio)} data-state={activeRatio === ratio ? 'active' : ''} className="aspect-ratio-btn border-2 border-slate-700 rounded-lg p-2 flex flex-col items-center justify-center gap-2 font-mono text-slate-300 min-h-[5rem]">
+                    <div className={`w-10 bg-slate-600 rounded-sm ${aspectClasses[ratio]}`}></div>
+                    <span className="text-xs font-bold">{ratio}</span>
+                </button>
+            );
+        };
+        
+        const IdeaModal = ({ isOpen, onClose, ideas, onUseIdea, onGenerateMore, isGenerating, mode }) => {
+            if (!isOpen) return null;
+
+            return (
+                <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
+                    <div className="modal-content glass-panel rounded-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 flex justify-between items-center border-b border-slate-700">
+                            <h2 className="text-2xl font-bold text-slate-100">✨ AI Punya Ide Nih!</h2>
+                            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><ion-icon name="close-outline" class="text-3xl"></ion-icon></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-4">
+                            {isGenerating && !ideas.length && <div className="flex justify-center items-center py-10"><FuturisticLoader/></div>}
+                            {ideas.map((idea, index) => (
+                                <div key={index} className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                     { (mode === 'Foto Produk' || mode === 'Poster / Desain') && (
+                                        <div className="mb-3">
+                                            {idea.usesModel ? (
+                                                <span className="text-xs bg-purple-600 text-white px-3 py-1 rounded-full font-semibold flex items-center gap-1 w-fit">
+                                                    <ion-icon name="person-outline"></ion-icon>
+                                                    Pakai Model
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs bg-slate-600 text-slate-200 px-3 py-1 rounded-full font-semibold flex items-center gap-1 w-fit">
+                                                    <ion-icon name="camera-outline"></ion-icon>
+                                                    Gak Pake Model
+                                                </span>
+                                            )}
+                                        </div>
+                                     )}
+                                    { (mode === 'Poster / Desain' || mode === 'Mockup Packaging') && idea.gayaDesain ? (
+                                        <div className="space-y-2 text-sm">
+                                            <div><strong className="text-indigo-300">Gaya Desain:</strong> {idea.gayaDesain}</div>
+                                            <div><strong className="text-indigo-300">Visual Utama / Elemen:</strong> {idea.visualUtama || idea.elemenVisual}</div>
+                                            <div><strong className="text-indigo-300">Tipografi:</strong> {idea.tipografi}</div>
+                                            <div><strong className="text-indigo-300">Palet Warna:</strong> {idea.paletWarna}</div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-slate-200 flex-1">{idea.idea}</p>
+                                    )}
+                                    <button onClick={() => onUseIdea(idea)} className="w-full mt-4 text-center bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-500 transition-colors">Pakai Konsep Ini</button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-6 border-t border-slate-700">
+                             <button onClick={onGenerateMore} disabled={isGenerating} className="w-full bg-slate-700 text-slate-200 font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-wait">
+                                {isGenerating ? <span className="spinner mx-auto"></span> : "Buat Ide Lainnya Dong"}
+                             </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        const ScrollToTopButton = ({ isVisible, onClick }) => {
+            return (
+                <button
+                    onClick={onClick}
+                    className={`scroll-to-top-btn ${isVisible ? 'visible' : ''} bg-indigo-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:bg-indigo-500 transition-colors`}
+                    aria-label="Scroll to top"
+                >
+                    <ion-icon name="arrow-up-outline" class="text-2xl"></ion-icon>
+                </button>
+            );
+        };
+
+        const ControlPanel = ({ mode, setMode, uploadedImages, handleFileChange, removeImage, prompt, setPrompt, aspectRatio, setAspectRatio, onGenerate, isLoading, onGenerateIdeas, isGeneratingIdeas, handleSuggestionClick, aiFocus, setAiFocus, imageAnalysis, isAnalyzing, posterHeadline, setPosterHeadline, mockupType, setMockupType, brandName, setBrandName, brandDescription, setBrandDescription, detectedBrandName, engine, openaiApiKey, credits }) => {
+            const onDrop = useCallback(e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files) handleFileChange(e.dataTransfer.files); }, [handleFileChange]);
+            const onDragOver = useCallback(e => { e.preventDefault(); e.stopPropagation(); }, []);
+            
+            const getIsButtonDisabled = () => {
+                if (isLoading || credits <= 0) return true;
+                if (engine === 'dalle' && !openaiApiKey) return true;
+                switch (mode) {
+                    case 'Foto Produk':
+                        return uploadedImages.length === 0 || !prompt.trim();
+                    case 'Poster / Desain':
+                        return !prompt.trim();
+                    case 'Mockup Packaging':
+                        return uploadedImages.length === 0 || !brandName.trim() || !brandDescription.trim();
+                    default:
+                        return true;
+                }
+            };
+            const isButtonDisabled = getIsButtonDisabled();
+            const suggestions = ['Pencahayaan Dramatis', 'Palet Warna Pastel', 'Gaya Retro', 'Foto Makro', 'Latar Belakang Bokeh', 'Permukaan Marmer', 'Minimalis Modern'];
+
+            return (
+                <div className="w-full glass-panel p-6 rounded-2xl">
+                    <div className="space-y-6">
+                         <div>
+                            <h2 className="font-semibold mb-3 text-slate-200">1. Pilih Mode Kreasi</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <button onClick={() => setMode('Foto Produk')} data-state={mode === 'Foto Produk' ? 'active' : ''} className="mode-btn p-3 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium text-sm">Foto Produk</button>
+                                <button onClick={() => setMode('Poster / Desain')} data-state={mode === 'Poster / Desain' ? 'active' : ''} className="mode-btn p-3 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium text-sm">Poster / Desain</button>
+                                <button onClick={() => setMode('Mockup Packaging')} data-state={mode === 'Mockup Packaging' ? 'active' : ''} className="mode-btn p-3 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium text-sm">Mockup Packaging</button>
+                            </div>
+                        </div>
+
+                        {/* --- UI for Foto Produk --- */}
+                        {mode === 'Foto Produk' && (
+                             <>
+                                <div>
+                                    <h2 className="font-semibold mb-3 text-slate-200">2. Upload Aset Visual <span className="text-slate-400 font-normal">(Wajib)</span></h2>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-3">
+                                        {uploadedImages.map((image, index) => (
+                                            <div key={index} className="relative group aspect-square">
+                                                <img src={image.previewUrl} alt={`Preview ${index + 1}`} className="w-full h-full object-cover rounded-md" />
+                                                <button onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold hover:bg-red-500">&times;</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <label htmlFor="file-upload" onDrop={onDrop} onDragOver={onDragOver} className="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer bg-slate-800/50 hover:bg-slate-800/80 transition-colors">
+                                        <div className="text-center text-slate-400"><ion-icon name="cloud-upload-outline" class="text-3xl"></ion-icon><p className="mt-1 text-sm">Klik atau seret foto ke sini</p></div>
+                                    </label>
+                                    <input id="file-upload" type="file" className="sr-only" accept="image/*" multiple onChange={e => handleFileChange(e.target.files)} />
+                                    {uploadedImages.length > 0 && (
+                                        <div className="mt-4">
+                                             <h3 className="font-semibold text-slate-200 mb-2 flex items-center gap-2">Fokus AI {isAnalyzing && <span className="spinner"></span>}</h3>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button onClick={() => setAiFocus('kemasan')} data-state={aiFocus === 'kemasan' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasPackaging} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan</button>
+                                                <button onClick={() => setAiFocus('produk')} data-state={aiFocus === 'produk' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasRawProduct} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Isi Produk</button>
+                                                <button onClick={() => setAiFocus('keduanya')} data-state={aiFocus === 'keduanya' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasPackaging || !imageAnalysis.hasRawProduct} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan & Isi</button>
+                                            </div>
+                                            {isAnalyzing && (<p className="text-xs text-slate-400 mt-2 text-center">Mohon tunggu, AI sedang menganalisis aset...</p>)}
+                                            {!isAnalyzing && !imageAnalysis.hasPackaging && (aiFocus === 'kemasan' || aiFocus === 'keduanya') && <p className="text-xs text-amber-400 mt-2">Opsi ini butuh foto referensi yang menyertakan kemasan.</p>}
+                                            {!isAnalyzing && !imageAnalysis.hasRawProduct && (aiFocus === 'produk' || aiFocus === 'keduanya') && <p className="text-xs text-amber-400 mt-2">Opsi ini butuh foto referensi yang menampilkan isi produk.</p>}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h2 className="font-semibold text-slate-200">3. Deskripsikan Imajinasimu</h2>
+                                        {uploadedImages.length > 0 && (
+                                            <button onClick={() => onGenerateIdeas()} disabled={isGeneratingIdeas} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded-full font-semibold hover:bg-indigo-500 transition-colors disabled:bg-slate-500 disabled:cursor-not-allowed">
+                                                {isGeneratingIdeas ? <><span className="spinner"></span><span>Mencari...</span></> : <>✨ <span>Beri Ide</span></>}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="relative w-full">
+                                        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="3" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors placeholder-slate-500" placeholder="Contoh: 'di atas meja kayu dengan pencahayaan dramatis'"></textarea>
+                                        {prompt && (<button onClick={() => setPrompt('')} className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors" aria-label="Clear text"><ion-icon name="close-circle-outline" class="text-xl"></ion-icon></button>)}
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-2">Coba tambahkan gaya:</p>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {suggestions.map(suggestion => (<button key={suggestion} onClick={() => handleSuggestionClick(suggestion)} className="text-xs bg-slate-700 px-3 py-1 rounded-full hover:bg-slate-600 transition-colors">{suggestion}</button>))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 className="font-semibold mb-3 text-slate-200">4. Pilih Rasio Aspek</h2>
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {['1:1', '4:5', '9:16', '16:9'].map(ratio => (<AspectRatioButton key={ratio} ratio={ratio} activeRatio={aspectRatio} onClick={setAspectRatio} />))}
+                                    </div>
+                                </div>
+                                <div className="pt-4">
+                                    <button onClick={onGenerate} disabled={isButtonDisabled} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-lg px-8 py-4 rounded-lg shadow-lg hover:scale-105 transform transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none hover:shadow-indigo-500/50">
+                                        {credits <= 0 ? 'KREDIT HABIS' : (isLoading ? 'MEMPROSES...' : '✨ Wujudkan Sekarang')}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                        
+                        {/* --- UI for Poster --- */}
+                        {mode === 'Poster / Desain' && (
+                           <div className="space-y-6">
+                                <div>
+                                    <h2 className="font-semibold mb-3 text-slate-200">2. Upload Aset Visual (Opsional)</h2>
+                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-3">
+                                        {uploadedImages.map((image, index) => (
+                                            <div key={index} className="relative group aspect-square">
+                                                <img src={image.previewUrl} alt={`Preview ${index + 1}`} className="w-full h-full object-cover rounded-md" />
+                                                <button onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold hover:bg-red-500">&times;</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <label htmlFor="file-upload-poster" onDrop={onDrop} onDragOver={onDragOver} className="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer bg-slate-800/50 hover:bg-slate-800/80 transition-colors">
+                                        <div className="text-center text-slate-400"><ion-icon name="cloud-upload-outline" class="text-3xl"></ion-icon><p className="mt-1 text-sm">Klik atau seret foto ke sini</p></div>
+                                    </label>
+                                     <input id="file-upload-poster" type="file" className="sr-only" accept="image/*" multiple onChange={e => handleFileChange(e.target.files)} />
+                                     {uploadedImages.length > 0 && (
+                                        <div className="mt-4">
+                                             <h3 className="font-semibold text-slate-200 mb-2 flex items-center gap-2">Fokus AI {isAnalyzing && <span className="spinner"></span>}</h3>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button onClick={() => setAiFocus('kemasan')} data-state={aiFocus === 'kemasan' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasPackaging} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan</button>
+                                                <button onClick={() => setAiFocus('produk')} data-state={aiFocus === 'produk' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasRawProduct} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Isi Produk</button>
+                                                <button onClick={() => setAiFocus('keduanya')} data-state={aiFocus === 'keduanya' ? 'active' : ''} disabled={isAnalyzing || !imageAnalysis.hasPackaging || !imageAnalysis.hasRawProduct} className="mode-btn p-2 text-xs bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan & Isi</button>
+                                            </div>
+                                            {isAnalyzing && (<p className="text-xs text-slate-400 mt-2 text-center">Mohon tunggu, AI sedang menganalisis aset...</p>)}
+                                            {!isAnalyzing && !imageAnalysis.hasPackaging && (aiFocus === 'kemasan' || aiFocus === 'keduanya') && <p className="text-xs text-amber-400 mt-2">Opsi ini butuh foto referensi yang menyertakan kemasan.</p>}
+                                            {!isAnalyzing && !imageAnalysis.hasRawProduct && (aiFocus === 'produk' || aiFocus === 'keduanya') && <p className="text-xs text-amber-400 mt-2">Opsi ini butuh foto referensi yang menampilkan isi produk.</p>}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                      <h2 className="font-semibold text-slate-200">3. Deskripsikan Konsep Poster</h2>
+                                      {uploadedImages.length > 0 && 
+                                        (<button onClick={() => onGenerateIdeas()} disabled={isGeneratingIdeas} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded-full font-semibold hover:bg-indigo-500 transition-colors disabled:bg-slate-500 disabled:cursor-not-allowed">
+                                            {isGeneratingIdeas ? <><span className="spinner"></span><span>Mencari...</span></> : <>✨ <span>Beri Ide</span></>}
+                                        </button>)}
+                                    </div>
+                                    <div className="relative w-full">
+                                        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="3" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors placeholder-slate-500" placeholder="Contoh: 'Poster promo diskon besar untuk produk kopi'"></textarea>
+                                        {prompt && (<button onClick={() => setPrompt('')} className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors" aria-label="Clear text"><ion-icon name="close-circle-outline" class="text-xl"></ion-icon></button>)}
+                                    </div>
+                                </div>
+                                 <div>
+                                    <h2 className="font-semibold text-slate-200 mb-2">4. Teks Utama (Headline)</h2>
+                                     <input type="text" value={posterHeadline} onChange={e => setPosterHeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3" placeholder="Contoh: 'Diskon 50%'" />
+                                </div>
+                                 <div>
+                                    <h2 className="font-semibold mb-3 text-slate-200">5. Pilih Rasio Aspek</h2>
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {['1:1', '4:5', '9:16', '16:9'].map(ratio => (<AspectRatioButton key={ratio} ratio={ratio} activeRatio={aspectRatio} onClick={setAspectRatio} />))}
+                                    </div>
+                                </div>
+                                <div className="pt-4">
+                                    <button onClick={onGenerate} disabled={isButtonDisabled} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-lg px-8 py-4 rounded-lg">
+                                        {credits <= 0 ? 'KREDIT HABIS' : (isLoading ? 'MEMPROSES...' : '✨ Wujudkan Sekarang')}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* --- UI for Mockup Packaging --- */}
+                        {mode === 'Mockup Packaging' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="font-semibold mb-3 text-slate-200">2. Upload Produk Referensi</h2>
+                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-3">
+                                        {uploadedImages.map((image, index) => (
+                                            <div key={index} className="relative group aspect-square">
+                                                <img src={image.previewUrl} alt={`Preview ${index + 1}`} className="w-full h-full object-cover rounded-md" />
+                                                <button onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold hover:bg-red-500">&times;</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                     <label htmlFor="file-upload-mockup" onDrop={onDrop} onDragOver={onDragOver} className="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer bg-slate-800/50 hover:bg-slate-800/80 transition-colors">
+                                        <div className="text-center text-slate-400"><ion-icon name="cloud-upload-outline" class="text-3xl"></ion-icon><p className="mt-1 text-sm">Klik atau seret foto produkmu</p></div>
+                                     </label>
+                                     <input id="file-upload-mockup" type="file" className="sr-only" accept="image/*" multiple onChange={e => handleFileChange(e.target.files)} />
+                                </div>
+                                <div>
+                                    <h2 className="font-semibold text-slate-200 mb-2">3. Pilih Tipe Desain</h2>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => setMockupType('Kemasan Simpel')} data-state={mockupType === 'Kemasan Simpel' ? 'active' : ''} className="mode-btn p-3 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan Simpel</button>
+                                        <button onClick={() => setMockupType('Kemasan Premium')} data-state={mockupType === 'Kemasan Premium' ? 'active' : ''} className="mode-btn p-3 bg-slate-800 border-2 border-slate-700 rounded-lg font-medium">Kemasan Premium</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 className="font-semibold text-slate-200 mb-2">
+                                        4. {detectedBrandName ? 'Brand Terdeteksi (Bisa Diedit)' : 'Nama Brand (Wajib)'}
+                                    </h2>
+                                    {isAnalyzing && uploadedImages.length > 0 ? (
+                                        <div className="flex items-center justify-center p-3 h-[48px] bg-slate-900 border border-slate-700 rounded-lg">
+                                            <div className="flex items-center gap-2 text-slate-400"><span className="spinner"></span> Menganalisis brand...</div>
+                                        </div>
+                                    ) : (
+                                        <input 
+                                            type="text" 
+                                            value={brandName} 
+                                            onChange={e => setBrandName(e.target.value)} 
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3" 
+                                            placeholder="Contoh: 'Renyah Jaya'" 
+                                        />
+                                    )}
+                                    {!isAnalyzing && detectedBrandName && (
+                                         <p className="text-xs text-slate-400 mt-1">AI mendeteksi brand ini dari gambar. Anda bisa mengeditnya jika perlu.</p>
+                                    )}
+                                </div>
+                                 <div>
+                                      <div className="flex justify-between items-center mb-2">
+                                        <h2 className="font-semibold text-slate-200">5. Deskripsi Produk <span className="text-slate-400 font-normal">(Wajib)</span></h2>
+                                        {uploadedImages.length > 0 &&
+                                            (<button onClick={() => onGenerateIdeas()} disabled={isGeneratingIdeas} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded-full font-semibold hover:bg-indigo-500 transition-colors disabled:bg-slate-500 disabled:cursor-not-allowed">
+                                                {isGeneratingIdeas ? <><span className="spinner"></span><span>Mencari...</span></> : <>✨ <span>Beri Ide</span></>}
+                                            </button>)}
+                                      </div>
+                                    <div className="relative w-full">
+                                        <textarea value={brandDescription} onChange={e => setBrandDescription(e.target.value)} rows="3" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors placeholder-slate-500" placeholder="Contoh: 'Keripik Talas Asin Gurih, target pasar anak muda, gaya desain ceria'"></textarea>
+                                        {brandDescription && (<button onClick={() => setBrandDescription('')} className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors" aria-label="Clear text"><ion-icon name="close-circle-outline" class="text-xl"></ion-icon></button>)}
+                                     </div>
+                                </div>
+                                <div className="pt-4">
+                                     <button onClick={onGenerate} disabled={isButtonDisabled} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-lg px-8 py-4 rounded-lg shadow-lg hover:scale-105 transform transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none hover:shadow-indigo-500/50">
+                                         {credits <= 0 ? 'KREDIT HABIS' : (isLoading ? 'MEMPROSES...' : '✨ Wujudkan Sekarang')}
+                                     </button>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [mode, setMode] = useState('Foto Produk');
+            const [uploadedImages, setUploadedImages] = useState([]);
+            const [prompt, setPrompt] = useState('');
+            const [posterHeadline, setPosterHeadline] = useState('');
+            const [mockupType, setMockupType] = useState('Kemasan Simpel');
+            const [brandName, setBrandName] = useState('');
+            const [detectedBrandName, setDetectedBrandName] = useState(null);
+            const [brandDescription, setBrandDescription] = useState('');
+            const [aspectRatio, setAspectRatio] = useState('1:1');
+            const [outputImage, setOutputImage] = useState('');
+            const [originalImage, setOriginalImage] = useState('');
+            const [isFinalRenderDone, setIsFinalRenderDone] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [isRenderingFinal, setIsRenderingFinal] = useState(false);
+            const [error, setError] = useState('');
+            const [isGeneratingIdeas, setIsGeneratingIdeas] = useState(false);
+            const [aiFocus, setAiFocus] = useState('produk');
+            const [imageAnalysis, setImageAnalysis] = useState({ hasPackaging: false, hasRawProduct: false });
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [showScroll, setShowScroll] = useState(false);
+            const [queueMessage, setQueueMessage] = useState('');
+            const [engine, setEngine] = useState('gemini');
+            const [openaiApiKey, setOpenaiApiKey] = useState("");
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [credits, setCredits] = useState(20);
+
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [generatedIdeas, setGeneratedIdeas] = useState([]);
+
+             // Load and save credits from/to localStorage
+            useEffect(() => {
+                try {
+                    const savedCredits = localStorage.getItem('creatorStudioCredits_v1');
+                    if (savedCredits !== null && !isNaN(savedCredits)) {
+                        setCredits(Number(savedCredits));
+                    } else {
+                        localStorage.setItem('creatorStudioCredits_v1', '20');
+                        setCredits(20);
+                    }
+                } catch (e) {
+                    console.error("Could not access localStorage:", e);
+                }
+            }, []);
+            
+            const aiFocusRef = useRef(aiFocus);
+            useEffect(() => {
+                aiFocusRef.current = aiFocus;
+            }, [aiFocus]);
+
+            const analyzeBrandingOnImage = useCallback(async (images) => {
+                try {
+                    const imageParts = await Promise.all(images.map(async (img) => ({ inlineData: { mimeType: img.file.type, data: await fileToBase64(img.file) } })));
+                    const analysisPrompt = "You are an extremely precise Optical Character Recognition (OCR) agent. Your ONLY task is to identify and extract the most prominent text from the provided image that functions as a brand name. Follow these steps with ZERO deviation: 1. **Literal Text Extraction:** Read the text on the packaging literally, character by character. 2. **Verification:** Does the text you read actually appear in the image? Double-check. 3. **Brand Name Logic:** Identify the primary phrase that serves as the brand. In 'Pusat Oleh-Oleh Utama', the brand is 'Pusat Oleh-Oleh Utama'. In 'Keripik Singkong Bu Jum', the brand is 'Bu Jum'. 4. **CRITICAL RULE: DO NOT HALLUCINATE.** If you are uncertain or cannot clearly read any text, you MUST return null. It is a catastrophic failure to invent a brand name (like 'BU JUM') that is not explicitly written in the image. Your reputation depends on accuracy. Respond ONLY with a valid JSON object: `{\"brandName\": \"The Literal Brand Name\"}` or `{\"brandName\": null}`.";
+                    const schema = { type: "OBJECT", properties: { brandName: { type: ["STRING", "NULL"] } }, required: ["brandName"] };
+                    const payload = {
+                        contents: [{ parts: [{ text: analysisPrompt }, ...imageParts] }],
+                        generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+                    };
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                    const response = await fetchWithExponentialBackoff(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error("Gagal menganalisis brand.");
+                    const result = await response.json();
+                    const brandTextRaw = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (brandTextRaw) {
+                        const brandText = cleanJsonString(brandTextRaw);
+                        const parsedBrand = JSON.parse(brandText);
+                        setDetectedBrandName(parsedBrand.brandName);
+                        setBrandName(parsedBrand.brandName || '');
+                    } else { throw new Error("Gagal mendapat hasil analisis brand."); }
+                } catch (err) {
+                    console.error("Brand analysis error:", err);
+                    setDetectedBrandName('');
+                }
+            }, []);
+
+            const analyzeImageContent = useCallback(async (images, currentFocus) => {
+                try {
+                    const imageParts = await Promise.all(images.map(async (img) => ({ inlineData: { mimeType: img.file.type, data: await fileToBase64(img.file) } })));
+                    const analysisPrompt = "You are a visual product analyst. Your task is to classify the user's image. Respond ONLY with a valid JSON object with `hasPackaging` and `hasRawProduct` booleans. First, determine the product type. Is it a 'container product' (like a bottle, bag, box holding contents) or a 'self-contained product' (like clothing, electronics, furniture where the item IS the product)? **Rule 1: For 'self-contained products' (e.g., a hoodie, a phone, lipstick), the answer is ALWAYS `{\"hasPackaging\": false, \"hasRawProduct\": true}`.** The item itself is the 'raw product'. **Rule 2: For 'container products',** `hasPackaging` is true. Then, determine `hasRawProduct` based on if the product's FINAL FORM (the contents, e.g., liquid, capsules, chips) is visible, either physically, in a transparent container, or in a clear photo on the label. Raw ingredients pictured for decoration do NOT count.";
+                    const schema = {
+                        type: "OBJECT",
+                        properties: {
+                            hasPackaging: { type: "BOOLEAN" },
+                            hasRawProduct: { type: "BOOLEAN" }
+                        },
+                        required: ["hasPackaging", "hasRawProduct"]
+                    };
+                    const payload = {
+                        contents: [{ parts: [{ text: analysisPrompt }, ...imageParts] }],
+                        generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+                    };
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                    const response = await fetchWithExponentialBackoff(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error("Gagal menganalisis gambar.");
+                    const result = await response.json();
+                    const analysisTextRaw = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (analysisTextRaw) {
+                        const analysisText = cleanJsonString(analysisTextRaw);
+                        const parsedAnalysis = JSON.parse(analysisText);
+                        setImageAnalysis(parsedAnalysis);
+                        if (currentFocus === 'produk' && !parsedAnalysis.hasRawProduct) setAiFocus('kemasan');
+                        else if (currentFocus === 'keduanya' && (!parsedAnalysis.hasRawProduct || !parsedAnalysis.hasPackaging)) setAiFocus(parsedAnalysis.hasPackaging ? 'kemasan' : 'produk');
+                        else if (currentFocus === 'kemasan' && !parsedAnalysis.hasPackaging) setAiFocus('produk');
+                    } else { throw new Error("Gagal mendapat hasil analisis."); }
+                } catch (err) {
+                    setError("Gagal menganalisis gambar aset. Menggunakan setelan default.");
+                    setImageAnalysis({ hasPackaging: true, hasRawProduct: true });
+                }
+            }, [setAiFocus]);
+            
+            const runAllAnalyses = useCallback(async (images, currentMode, currentFocus) => {
+                setIsAnalyzing(true);
+                await analyzeImageContent(images, currentFocus);
+                if (currentMode === 'Mockup Packaging') {
+                    await analyzeBrandingOnImage(images);
+                }
+                setIsAnalyzing(false);
+            }, [analyzeImageContent, analyzeBrandingOnImage]);
+
+            useEffect(() => {
+                const handler = setTimeout(() => {
+                    if (uploadedImages.length > 0) {
+                        runAllAnalyses(uploadedImages, mode, aiFocusRef.current);
+                    }
+                }, 500);
+                return () => clearTimeout(handler);
+            }, [uploadedImages, mode, runAllAnalyses]);
+            
+            
+            const checkScrollTop = () => {
+                if (!showScroll && window.pageYOffset > 300) {
+                    setShowScroll(true);
+                } else if (showScroll && window.pageYOffset <= 300) {
+                    setShowScroll(false);
+                }
+            };
+
+            useEffect(() => {
+                window.addEventListener('scroll', checkScrollTop);
+                return () => {
+                    window.removeEventListener('scroll', checkScrollTop);
+                };
+            }, [showScroll]);
+
+            const scrollTop = () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+
+            const handleFileChange = useCallback((files) => {
+                const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+                if (newFiles.length === 0 && files.length > 0) {
+                    setError('Harap pilih file gambar yang valid (PNG, JPG, dll.).'); return;
+                }
+                const newImageObjects = newFiles.map(file => ({ file, previewUrl: URL.createObjectURL(file) }));
+                
+                setUploadedImages(prev => [...prev, ...newImageObjects]);
+                setImageAnalysis({ hasPackaging: false, hasRawProduct: false });
+                setAiFocus('produk'); 
+                setDetectedBrandName(null);
+                setBrandName('');
+                setError('');
+            }, []);
+
+            const removeImage = useCallback((indexToRemove) => {
+                URL.revokeObjectURL(uploadedImages[indexToRemove].previewUrl);
+                setUploadedImages(prev => {
+                    const newImages = prev.filter((_, index) => index !== indexToRemove);
+                    if (newImages.length === 0) {
+                         setImageAnalysis({ hasPackaging: false, hasRawProduct: false });
+                         setIsAnalyzing(false);
+                         setDetectedBrandName(null);
+                         setBrandName('');
+                    }
+                    return newImages;
+                });
+            }, [uploadedImages]);
+
+            useEffect(() => {
+                return () => uploadedImages.forEach(image => URL.revokeObjectURL(image.previewUrl));
+            }, [uploadedImages]);
+
+            const handleSuggestionClick = (suggestion) => {
+                setPrompt(prev => prev ? `${prev}, ${suggestion}` : suggestion);
+            };
+            
+            const generateIdeas = async (isRegenerating = false) => {
+                if (uploadedImages.length === 0 && (mode === 'Foto Produk' || mode === 'Mockup Packaging' || mode === 'Poster / Desain')) return;
+                setIsGeneratingIdeas(true);
+                setError('');
+                if (!isRegenerating) {
+                    setGeneratedIdeas([]);
+                    setIsModalOpen(true);
+                }
+
+                try {
+                    const imageParts = await Promise.all(uploadedImages.map(async (img) => ({ inlineData: { mimeType: img.file.type, data: await fileToBase64(img.file) } })));
+                    
+                    let ideaPrompt;
+                    let schema;
+                    
+                    if (mode === 'Mockup Packaging' || mode === 'Poster / Desain'){
+                       schema = { type: "ARRAY", items: { type: "OBJECT", properties: { gayaDesain: { type: "STRING" }, elemenVisual: { type: "STRING" }, tipografi: { type: "STRING" }, paletWarna: { type: "STRING" }, usesModel: {type: "BOOLEAN"}}, required: ["gayaDesain", "elemenVisual", "tipografi", "paletWarna", "usesModel"]}};
+                        ideaPrompt = `Anda adalah seorang brand strategist dan desainer grafis ahli untuk pasar Indonesia. Tugas Anda adalah membuat 5 konsep desain yang bervariasi dan berkualitas tinggi.
+
+**ATURAN WAJIB:**
+1.  **BAHASA:** Semua output teks WAJIB dalam Bahasa Indonesia yang natural dan profesional.
+2.  **VARIASI MODEL:** Dari 5 ide, **WAJIB ada 2 ide yang menggunakan model manusia** (\`usesModel: true\`) dan **3 ide yang tidak menggunakan model** (\`usesModel: false\`).
+3.  **KONTEKS MODE "MOCKUP PACKAGING":**
+    * Jika tipe desain **'Simpel'**: Semua ide HARUS berupa konsep stiker untuk ditempel di kemasan dasar yang murah (misal: pouch bening).
+    * Jika tipe desain **'Premium'**: Semua ide HARUS untuk kemasan yang 'naik kelas' (misal: pouch full printing, box, botol custom).
+4.  **FORMAT OUTPUT:** Respons HANYA dengan array JSON yang valid sesuai skema.`;
+                    } else { // Foto Produk
+                        schema = { type: "ARRAY", items: { type: "OBJECT", properties: { idea: { type: "STRING" }, usesModel: { type: "BOOLEAN" }}, required: ["idea", "usesModel"]}};
+                        ideaPrompt = `Anda adalah seorang fotografer produk dan creative director ahli untuk pasar Indonesia. Tugas Anda adalah membuat 5 konsep foto produk yang bervariasi dan menjual.
+
+**ATURAN WAJIB:**
+1.  **BAHASA:** Semua output teks WAJIB dalam Bahasa Indonesia yang natural dan profesional.
+2.  **VARIASI MODEL:** Dari 5 ide, **WAJIB ada 2 ide yang menggunakan model manusia** (\`usesModel: true\`) dan **3 ide yang tidak menggunakan model** (\`usesModel: false\`).
+3.  **HUKUM KONTEKS "FOTO PRODUK":** Anda **DILARANG KERAS** menyarankan ide yang mengubah bentuk kemasan, logo, atau merek produk yang ada. Fokus 100% pada konsep FOTOGRAFI (latar belakang, properti, pencahayaan, mood, angle) untuk produk yang sudah ada.
+4.  **FORMAT OUTPUT:** Respons HANYA dengan array JSON yang valid sesuai skema.`;
+
+                    }
+                    
+                    const payload = { 
+                        contents: [{ parts: [{ text: ideaPrompt }, ...imageParts] }],
+                        generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+                    };
+                    // This now calls our own backend function
+                    const response = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'ideas', payload })
+                    });
+
+                    if (!response.ok) throw new Error("Gagal mendapatkan ide dari AI.");
+                    
+                    const ideas = await response.json();
+                    setGeneratedIdeas(ideas);
+
+                } catch (err) {
+                    setError(err.message);
+                    setIsModalOpen(false);
+                } finally {
+                    setIsGeneratingIdeas(false);
+                }
+            };
+            const handleUseIdea = (idea) => {
+                if (idea.gayaDesain) {
+                     if(mode === 'Mockup Packaging'){
+                        setBrandDescription(`Gaya Desain: ${idea.gayaDesain}. Elemen Visual: ${idea.elemenVisual}. Tipografi: ${idea.tipografi}. Palet Warna: ${idea.paletWarna}.`);
+                    } else { // Poster
+                        setPrompt(`Sebuah poster dengan gaya ${idea.gayaDesain}. Visual utamanya adalah ${idea.visualUtama}. Tata letaknya seimbang dengan tipografi ${idea.tipografi} dan palet warna ${idea.paletWarna}.`);
+                    }
+                } else {
+                    setPrompt(idea.idea);
+                }
+                setIsModalOpen(false);
+            };
+
+            const generateImage = async () => {
+                if (loading) return;
+
+                if (credits <= 0) {
+                    setError(<>Credit Anda sudah habis. Segera hubungi <a href="https://www.sosmeurus.com" target="_blank" rel="noopener noreferrer" className="font-bold underline">sosmeurus.com</a> untuk melanjutkan.</>);
+                    return;
+                }
+                
+                setLoading(true);
+                setError('');
+                setOutputImage('');
+                setQueueMessage('');
+                setIsFinalRenderDone(false);
+                setOriginalImage('');
+                
+                try {
+                    const imageBlobs = await Promise.all(uploadedImages.map(async (img) => ({
+                        mimeType: img.file.type,
+                        data: await fileToBase64(img.file)
+                    })));
+
+                    const apiPayload = {
+                        mode,
+                        prompt,
+                        posterHeadline,
+                        mockupType,
+                        brandName,
+                        brandDescription,
+                        aspectRatio,
+                        aiFocus,
+                        engine,
+                        openaiApiKey, // Note: This will be sent to your backend, not directly to OpenAI
+                        imageBlobs
+                    };
+
+                    // This is the major change: we call our own backend function
+                    const response = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'image', payload: apiPayload })
+                    });
+                    
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.error || 'Terjadi kesalahan di server.');
+                    }
+
+                    if (result.imageUrl) {
+                        setOutputImage(result.imageUrl);
+                        setOriginalImage(result.imageUrl);
+                        
+                        const newCredits = credits - 1;
+                        setCredits(newCredits);
+                        try {
+                           localStorage.setItem('creatorStudioCredits_v1', newCredits.toString());
+                        } catch (e) {
+                           console.error("Could not access localStorage:", e);
+                        }
+                    } else {
+                        throw new Error("Server tidak mengembalikan gambar.");
+                    }
+
+                } catch (err) {
+                    console.error("An error occurred during image generation:", err);
+                    setError(err.message || "Terjadi kesalahan yang tidak diketahui.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleFinalRender = async () => {
+                if (!originalImage || isRenderingFinal) return;
+                setIsRenderingFinal(true);
+                setError('');
+                setQueueMessage('Final Render ke Ultra HD...');
+                try {
+                     const base64Data = originalImage.split(',')[1];
+                     const response = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'final-render',
+                            payload: {
+                                base64Data
+                            }
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'Gagal melakukan Final Render di server.');
+                    }
+                    
+                    if (result.imageUrl) {
+                        setOutputImage(result.imageUrl);
+                        setIsFinalRenderDone(true);
+                    } else {
+                        throw new Error("AI tidak memberikan hasil Final Render.");
+                    }
+                } catch (err) {
+                    setError(err.message || "Terjadi kesalahan saat Final Render.");
+                } finally {
+                    setIsRenderingFinal(false);
+                    setQueueMessage('');
+                }
+            };
+
+
+            return (
+                <div className="min-h-screen flex flex-col relative">
+                    <Header onSettingsClick={() => setIsSettingsOpen(prev => !prev)} />
+                    <div className="relative container mx-auto px-4 md:px-8">
+                       <SettingsPopover 
+                           isOpen={isSettingsOpen} 
+                           onClose={() => setIsSettingsOpen(false)}
+                           engine={engine}
+                           setEngine={setEngine}
+                           apiKey={openaiApiKey}
+                           setApiKey={setOpenaiApiKey}
+                       />
+                    </div>
+                     {/* Credit Display */}
+                    <div className="container mx-auto px-4 md:px-8 text-center mb-6">
+                        <div className="inline-block glass-panel px-4 py-2 rounded-full text-sm shadow-lg border border-slate-700">
+                            <span className="font-bold text-indigo-300">Sisa Kredit:</span> <span className="font-mono text-white">{credits}</span> / 20
+                        </div>
+                    </div>
+                    <main className="flex-grow container mx-auto p-4 md:p-8 flex flex-col lg:flex-row items-start gap-8">
+                        <div className="w-full lg:w-[450px] flex-shrink-0 lg:sticky lg:top-8">
+                            <ControlPanel 
+                                {...{ credits, mode, setMode, uploadedImages, handleFileChange, removeImage, prompt, setPrompt, aspectRatio, setAspectRatio, onGenerate: generateImage, isLoading: loading, onGenerateIdeas: generateIdeas, isGeneratingIdeas, handleSuggestionClick, aiFocus, setAiFocus, imageAnalysis, isAnalyzing, posterHeadline, setPosterHeadline, mockupType, setMockupType, brandName, setBrandName, brandDescription, setBrandDescription, detectedBrandName, engine, openaiApiKey }}
+                            />
+                        </div>
+                        <div className="w-full flex-grow">
+                             <ResultPanel {...{ isLoading: loading || isRenderingFinal, outputImage, error, aspectRatio, queueMessage, onFinalRender: handleFinalRender, isRenderingFinal, isFinalRenderDone, engine }} />
+                        </div>
+                    </main>
+                    <Footer />
+                    <IdeaModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                        ideas={generatedIdeas}
+                        onUseIdea={handleUseIdea}
+                        onGenerateMore={() => generateIdeas(true)}
+                        isGenerating={isGeneratingIdeas}
+                        mode={mode}
+                    />
+                    <ScrollToTopButton isVisible={showScroll} onClick={scrollTop} />
+                </div>
+            );
+        };
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
