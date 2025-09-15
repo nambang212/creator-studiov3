@@ -29,7 +29,6 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
 
     let result;
     try {
-        // ADDED a specific try...catch block here to prevent a full server crash.
         result = await model.generateContent({
             contents: [{ parts: content_parts }],
             generationConfig: {
@@ -37,8 +36,7 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
             },
         });
     } catch (e) {
-        console.error("CRITICAL CRASH inside generateContent call:", e);
-        // This converts a server-crashing error into a manageable one.
+        console.error("CRITICAL CRASH inside generateContent (Gemini Image) call:", e);
         throw new Error(`Google AI SDK Error: ${e.message}`);
     }
 
@@ -155,7 +153,15 @@ module.exports = async (req, res) => {
             const finalRenderPrompt = "Re-render this image from scratch as a final professional photograph. Enhance details, lighting, and textures to achieve hyper-realism...";
             const systemInstruction = "You are a specialist AI image final rendering engine...";
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction });
-            const result = await model.generateContent([finalRenderPrompt, imagePart]);
+            
+            let result;
+            try {
+                result = await model.generateContent([finalRenderPrompt, imagePart]);
+            } catch (e) {
+                console.error("CRITICAL CRASH inside generateContent (Final Render) call:", e);
+                throw new Error(`Google AI SDK Error: ${e.message}`);
+            }
+
             const response = await result.response;
             const finalRenderBase64 = response.candidates[0].content.parts.find(p => p.inlineData)?.inlineData.data;
             if (finalRenderBase64) {
@@ -166,10 +172,17 @@ module.exports = async (req, res) => {
             }
             
         } else if (type === 'ideas') {
-            // Using the standard model for text tasks is fine.
             const { modelPayload } = payload;
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-            const result = await model.generateContent(modelPayload);
+
+            let result;
+            try {
+                result = await model.generateContent(modelPayload);
+            } catch (e) {
+                console.error("CRITICAL CRASH inside generateContent (Ideas) call:", e);
+                throw new Error(`Google AI SDK Error: ${e.message}`);
+            }
+            
             const response = await result.response;
             const ideasText = response.text();
             console.log("AI response for ideas (raw text):", ideasText);
@@ -183,7 +196,6 @@ module.exports = async (req, res) => {
             }
 
         } else if (type === 'analyze') {
-             // Using the standard model for text/JSON tasks is fine.
             const { imageParts, analysisType } = payload;
             let analysisPrompt, schema;
 
@@ -196,13 +208,21 @@ module.exports = async (req, res) => {
             }
             
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-            const result = await model.generateContent({
-                contents: [{ parts: [{ text: analysisPrompt }, ...imageParts] }],
-                generationConfig: { responseMimeType: "application/json", responseSchema: schema }
-            });
+            
+            let result;
+            try {
+                result = await model.generateContent({
+                    contents: [{ parts: [{ text: analysisPrompt }, ...imageParts] }],
+                    generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+                });
+            } catch (e) {
+                console.error("CRITICAL CRASH inside generateContent (Analyze) call:", e);
+                throw new Error(`Google AI SDK Error: ${e.message}`);
+            }
+
             const response = await result.response;
             const jsonText = response.text();
-             console.log(`Analysis '${analysisType}' successful.`);
+            console.log(`Analysis '${analysisType}' successful.`);
             res.status(200).json(JSON.parse(jsonText));
 
         } else {
