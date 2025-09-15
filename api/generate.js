@@ -14,22 +14,32 @@ if (!geminiApiKey) {
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
 const generateWithGemini = async (finalPrompt, imageParts) => {
-    // UPDATED: Simplified system instruction to be more direct.
-    const systemInstruction = `You are an AI image generator. Your primary task is to create a single, photorealistic image based on the user's prompt.
-- Adhere strictly to the requested aspect ratio.
-- Follow the creative brief and subject focus instructions precisely.
-- Do NOT add any text, logos, or watermarks unless explicitly requested as a poster headline.
-- Your ONLY output must be the image file. Do not respond with any text, descriptions, or confirmations.`;
+    // FINAL REVISION: Forceful, explicit system instruction to prevent code generation.
+    const systemInstruction = `You are a highly advanced AI image generation service. Your SOLE function is to create and output a single, high-quality, photorealistic image based on a user's creative brief.
+
+**CRITICAL DIRECTIVES - YOU MUST FOLLOW THESE RULES:**
+1.  **YOUR ROLE:** You are an IMAGE GENERATOR. You are NOT a code assistant, a text generator, or a chatbot.
+2.  **PRIMARY OUTPUT:** Your ONLY output is the raw image data. Nothing else.
+3.  **FORBIDDEN ACTIONS:** You MUST NOT, under any circumstances, write, generate, or output any code (Python, JavaScript, etc.), text descriptions, explanations, apologies, or conversational dialogue.
+4.  **INTERPRETATION:** Interpret the user's prompt as a direct command to create a visual asset.
+5.  **EXECUTE:** Fulfill the image request with extreme precision, especially regarding aspect ratio, subject matter, and style.`;
     
     const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash-latest",
         systemInstruction,
     });
 
-    const result = await model.generateContent([finalPrompt, ...imageParts]);
+    // REVISED: Structure the content array to clearly separate the text prompt from the image reference.
+    const content_parts = [];
+    if (imageParts && imageParts.length > 0) {
+        content_parts.push({ text: "Use the following uploaded image(s) as the primary visual reference for the subject. The text prompt that follows is the creative brief for the new scene you will create." }, ...imageParts);
+    }
+    content_parts.push({text: finalPrompt});
+
+
+    const result = await model.generateContent(content_parts);
     const response = await result.response;
     
-    // DEBUGGING: Log safety feedback from the API
     if (response.promptFeedback) {
         console.log("Safety Feedback from Gemini:", JSON.stringify(response.promptFeedback, null, 2));
     }
@@ -37,7 +47,6 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
     const candidate = response.candidates?.[0];
     const base64ImageData = candidate?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
     
-    // DEBUGGING: Log finish reason
     if (candidate?.finishReason && candidate.finishReason !== "STOP") {
         console.error("Generation stopped for a reason other than STOP:", candidate.finishReason);
     }
@@ -46,7 +55,6 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
         return `data:image/png;base64,${base64ImageData}`;
     } else {
         const textResponse = response.text();
-        
         let finalError = "AI did not return an image.";
         if (textResponse) {
             finalError = `AI failed to create image, responding with text instead: "${textResponse}"`;
@@ -54,7 +62,6 @@ const generateWithGemini = async (finalPrompt, imageParts) => {
         if (candidate?.finishReason === "SAFETY") {
              finalError += " This was likely due to the prompt or image triggering a safety filter.";
         }
-        
         throw new Error(finalError);
     }
 };
@@ -88,8 +95,6 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     
-    console.log("API function invoked. Method:", req.method);
-
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
     
@@ -127,8 +132,14 @@ module.exports = async (req, res) => {
                 }
             }
             
-            // UPDATED: Rephrased the final prompt to be more natural.
-            const finalPrompt = `${creativeBrief} The final image must be a high-resolution, photorealistic photograph with a ${descriptiveAspectRatio} aspect ratio.`;
+            // FINAL REVISION: Structured prompt to be a clear command.
+            const finalPrompt = `--- CREATIVE BRIEF ---
+**Creative Task:** Generate a photorealistic image.
+**Brief:** ${creativeBrief}
+**Aspect Ratio (Strict):** ${descriptiveAspectRatio}
+--- END BRIEF ---
+
+Execute the image generation now. Your only output should be the image file.`;
             
             const imageParts = imageBlobs ? imageBlobs.map(blob => ({ inlineData: { mimeType: blob.mimeType, data: blob.data } })) : [];
             let imageUrl;
